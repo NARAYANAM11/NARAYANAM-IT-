@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Branch Asset Entry</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#f3f3f3;font-family:Arial,sans-serif;color:#111}
+  .app{max-width:900px;margin:0 auto;padding:16px}
+  .controls{background:#fff;padding:14px;border-radius:10px;margin-bottom:14px;box-shadow:0 1px 5px rgba(0,0,0,.12)}
+  .branch-edit{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:12px}
+  .branch-edit input{
+    width:100%;height:40px;border:1px solid #aaa;border-radius:6px;
+    padding:8px 10px;font-size:16px
+  }
+  .row-editor{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .entry{display:grid;grid-template-columns:70px 1fr 1fr 1fr;gap:6px;align-items:center;margin-bottom:7px}
+  .entry .nos{text-align:center;font-weight:bold}
+  .field-with-camera{display:flex;gap:4px}
+  .field-with-camera input{
+    min-width:0;flex:1;height:38px;border:1px solid #aaa;border-radius:5px;
+    padding:7px;font-size:15px
+  }
+  .cam{
+    width:42px;height:38px;border:1px solid #777;border-radius:5px;background:#fff;
+    font-size:19px;cursor:pointer;flex:0 0 42px
+  }
+  .pcselect{height:38px;border:1px solid #aaa;border-radius:5px;background:#fff;padding:0 6px;font-size:15px}
+  .printbtn{width:100%;height:44px;border:0;border-radius:6px;background:#111;color:#fff;font-size:16px;margin-top:10px}
+  .hint{font-size:12px;color:#555;margin-top:8px}
+
+  /* PRINT LAYOUT — intentionally kept to the supplied reference */
+  .print-page{
+    width:210mm;
+    min-height:297mm;
+    background:white;
+    margin:0 auto;
+    padding:12mm 8mm 10mm 8mm;
+  }
+  .branch-print{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    margin-bottom:16mm;
+    font-size:14pt;
+  }
+  .branch-print td{
+    border:1px solid #444;
+    height:8.2mm;
+    padding:1mm 2.5mm;
+    vertical-align:middle;
+  }
+  .branch-print td.blank{height:8.2mm}
+  .main-print{
+    width:calc(100% - 10mm);
+    margin:0 auto;
+    border-collapse:collapse;
+    table-layout:fixed;
+    font-size:12.5pt;
+  }
+  .main-print th,.main-print td{
+    border:1px solid #111;
+    text-align:center;
+    vertical-align:middle;
+    height:7.2mm;
+    padding:0.8mm 1mm;
+  }
+  .main-print th{
+    height:8.2mm;
+    font-weight:bold;
+  }
+  .main-print col:nth-child(1){width:18%}
+  .main-print col:nth-child(2){width:28%}
+  .main-print col:nth-child(3){width:28%}
+  .main-print col:nth-child(4){width:26%}
+
+  @media screen{
+    .print-page{display:none}
+  }
+
+  @media print{
+    @page{size:A4 portrait;margin:0}
+    body{background:#fff}
+    .app{display:none!important}
+    .print-page{display:block!important}
+  }
+
+  @media(max-width:600px){
+    .app{padding:10px}
+    .entry{grid-template-columns:42px 1fr 1fr}
+    .entry .pcwrap{grid-column:2/4}
+    .row-editor{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="controls">
+    <div class="branch-edit">
+      <input id="branchName" placeholder="Branch Name">
+      <input id="branchCode" placeholder="Branch Code">
+      <input id="branchAddress" placeholder="Branch Address">
+    </div>
+
+    <div id="entries"></div>
+
+    <button class="printbtn" onclick="renderPrint(); window.print()">Print A4</button>
+    <div class="hint">
+      Camera button mobile par direct camera/photo picker kholega. Camera se photo lene ke baad OCR try hoga; OCR result galat ho to field manually edit kar sakte hain.
+    </div>
+  </div>
+</div>
+
+<div class="print-page">
+  <table class="branch-print">
+    <tr><td id="pBranchName">Branch Name</td></tr>
+    <tr><td id="pBranchCode">Branch Code</td></tr>
+    <tr><td id="pBranchAddress">Branch Address</td></tr>
+    <tr><td class="blank"></td></tr>
+  </table>
+
+  <table class="main-print">
+    <colgroup><col><col><col><col></colgroup>
+    <thead>
+      <tr>
+        <th>Nos</th>
+        <th>Serial Number</th>
+        <th>Request ID</th>
+        <th>Device</th>
+      </tr>
+    </thead>
+    <tbody id="printRows"></tbody>
+  </table>
+</div>
+
+<input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none">
+
+<script>
+const TOTAL = 30;
+let activeField = null;
+
+function makeEntry(n){
+  const div=document.createElement('div');
+  div.className='entry';
+  div.innerHTML=`
+    <div class="nos">${n}</div>
+    <div class="field-with-camera">
+      <input id="sn${n}" data-key="sn${n}" placeholder="Serial Number" autocomplete="off">
+      <button class="cam" type="button" data-field="sn${n}" title="Camera">📷</button>
+    </div>
+    <div class="field-with-camera">
+      <input id="rq${n}" data-key="rq${n}" placeholder="Request ID" autocomplete="off">
+      <button class="cam" type="button" data-field="rq${n}" title="Camera">📷</button>
+    </div>
+    <div class="pcwrap">
+      <select id="pc${n}" class="pcselect" data-key="pc${n}">
+        <option value="">Device</option>
+        <option value="Desktop">Desktop</option>
+        <option value="Laptop">Laptop</option>
+        <option value="Printer">Printer</option>
+        <option value="Scanner">Scanner</option>
+      </select>
+    </div>`;
+  return div;
+}
+
+const entries=document.getElementById('entries');
+for(let i=1;i<=TOTAL;i++) entries.appendChild(makeEntry(i));
+
+document.querySelectorAll('input[data-key], select[data-key]').forEach(el=>{
+  const saved=localStorage.getItem('asset_'+el.dataset.key);
+  if(saved!==null) el.value=saved;
+  el.addEventListener('input',save);
+  el.addEventListener('change',save);
+});
+
+['branchName','branchCode','branchAddress'].forEach(id=>{
+  const el=document.getElementById(id);
+  const saved=localStorage.getItem('asset_'+id);
+  if(saved!==null) el.value=saved;
+  el.addEventListener('input',save);
+});
+
+function save(e){
+  const el=e.target;
+  localStorage.setItem('asset_'+el.id,el.value);
+}
+
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('.cam');
+  if(!btn)return;
+  activeField=btn.dataset.field;
+  const input=document.getElementById('cameraInput');
+  input.value='';
+  input.click();
+});
+
+document.getElementById('cameraInput').addEventListener('change', async e=>{
+  const file=e.target.files && e.target.files[0];
+  if(!file || !activeField)return;
+
+  const target=document.getElementById(activeField);
+
+  // First provide the captured image to OCR when Tesseract is available.
+  // If it is not available/offline, the camera capture still works and
+  // the user can enter the value manually.
+  try{
+    await loadTesseract();
+    target.value='Reading...';
+    target.dispatchEvent(new Event('input',{bubbles:true}));
+    const result=await Tesseract.recognize(file,'eng',{logger:()=>{}});
+    const text=(result.data.text||'').replace(/\s+/g,' ').trim();
+    target.value=cleanOCR(text);
+    target.dispatchEvent(new Event('input',{bubbles:true}));
+  }catch(err){
+    target.value='';
+    target.focus();
+    alert('Photo capture ho gaya. OCR load nahi ho saka, isliye value manually type karein.');
+  }
+});
+
+function cleanOCR(text){
+  return text.replace(/[\r\n]+/g,' ').replace(/\s{2,}/g,' ').trim();
+}
+
+let tesseractPromise=null;
+function loadTesseract(){
+  if(window.Tesseract)return Promise.resolve();
+  if(tesseractPromise)return tesseractPromise;
+  tesseractPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload=()=>resolve();
+    s.onerror=reject;
+    document.head.appendChild(s);
+  });
+  return tesseractPromise;
+}
+
+function renderPrint(){
+  const branchName = document.getElementById('branchName').value.trim();
+  const branchCode = document.getElementById('branchCode').value.trim();
+  const branchAddress = document.getElementById('branchAddress').value.trim();
+
+  document.getElementById('pBranchName').textContent =
+    'Branch Name' + (branchName ? '    ' + branchName : '');
+  document.getElementById('pBranchCode').textContent =
+    'Branch Code' + (branchCode ? '    ' + branchCode : '');
+  document.getElementById('pBranchAddress').textContent =
+    'Branch Address' + (branchAddress ? '    ' + branchAddress : '');
+
+  const tbody=document.getElementById('printRows');
+  tbody.innerHTML='';
+  for(let i=1;i<=TOTAL;i++){
+    const sn=document.getElementById('sn'+i).value;
+    const rq=document.getElementById('rq'+i).value;
+    const pc=document.getElementById('pc'+i).value;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${i}</td><td>${escapeHTML(sn)}</td><td>${escapeHTML(rq)}</td><td>${escapeHTML(pc)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function escapeHTML(v){
+  return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+window.addEventListener('beforeprint',renderPrint);
+renderPrint();
+</script>
+</body>
+</html>
